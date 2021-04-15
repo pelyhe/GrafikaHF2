@@ -64,6 +64,10 @@ const char* fragmentSource = R"(
 
 enum MaterialType { ROUGH, REFLECTIVE, PORTAL};
 
+vec3 operator/(vec3 num, vec3 denom) {
+	return vec3(num.x / denom.x, num.y / denom.y, num.z / denom.z);
+}
+
 struct Material {
 	vec3 ka, kd, ks;		// ambiens, diffúz, spekuláris visszaverõképesség
 	float shininess;
@@ -82,10 +86,6 @@ struct RoughMaterial : Material {
 		shininess = _shininess;
 	}
 };
-
-vec3 operator/(vec3 num, vec3 denom) {
-	return vec3(num.x / denom.x, num.y / denom.y, num.z / denom.z);
-}
 
 struct ReflectiveMaterial : Material {
 	ReflectiveMaterial(vec3 n, vec3 kappa) : Material(REFLECTIVE) {		// n: törésmutató, kappa: kioltási tényezõ
@@ -121,122 +121,6 @@ protected:
 	Material* material;
 public:
 	virtual Hit intersect(const Ray& ray) = 0;		// kap egy sugarat és eldönti, hogy történt-e metszés (hit struktura)
-};
-
-mat4 TMatrix4(mat4 m) {
-	return mat4(
-		m.rows[0].x, m.rows[1].x, m.rows[2].x, m.rows[3].x,
-		m.rows[0].y, m.rows[1].y, m.rows[2].y, m.rows[3].y,
-		m.rows[0].z, m.rows[1].z, m.rows[2].z, m.rows[3].z,
-		m.rows[0].w, m.rows[1].w, m.rows[2].w, m.rows[3].w
-	);
-}
-
-struct Quadric : public Intersectable {
-	mat4 Q; //can be symmetric
-	std::vector<Quadric*> intersectors; //if positive to an r, then there is no intersection there
-
-	float f(vec4 r) { //r.w = 1
-		return dot(r * Q, r); // = 0 for points on the surface
-	}
-
-	virtual vec3 gradf(vec4 r) { //r.w = 1
-		vec4 g = r * Q * 2;
-		return normalize(vec3(g.x, g.y, g.z));
-	}
-
-	void Translate(vec3 t) {
-		mat4 m = TranslateMatrix(-1 * t); //inverse matrix of the transformation
-		Q = m * Q * TMatrix4(m);
-	}
-
-	void Translate(float x, float y, float z) {
-		Translate(vec3(x, y, z));
-	}
-
-	void Scale(vec3 s) {
-		mat4 m = ScaleMatrix(vec3(1 / s.x, 1 / s.y, 1 / s.z)); //inverse matrix of the transformation
-		Q = m * Q * TMatrix4(m);
-	}
-
-	void Scale(float x, float y, float z) {
-		Scale(vec3(x, y, z));
-	}
-
-	void Rotate(float angle, vec3 w) {
-		mat4 m = RotationMatrix(-1 * angle, w); //inverse matrix of the transformation
-		Q = m * Q * TMatrix4(m);
-	}
-
-	Hit intersect(const Ray& ray) {
-		Hit hit;
-
-		vec4 S(ray.start.x, ray.start.y, ray.start.z, 1);
-		vec4 D(ray.dir.x, ray.dir.y, ray.dir.z, 0);
-
-		float a = dot(D * Q, D);
-		float b = dot(D * Q, S) + dot(S * Q, D);
-		float c = dot(S * Q, S);
-		float discr = b * b - 4.0f * a * c;
-
-		if (discr < 0) return hit;
-		float sqrt_discr = sqrtf(discr);
-		float t1 = (-b + sqrt_discr) / 2.0f / a;    // t1 >= t2 for sure
-		float t2 = (-b - sqrt_discr) / 2.0f / a;
-
-		if (t1 <= 0) return hit;
-
-		bool t1CutOff = false;
-		bool t2CutOff = false;
-		for (auto cutter : intersectors) {
-			vec3 t1Pos(ray.start + ray.dir * t1);
-			vec4 t1HomPos(t1Pos.x, t1Pos.y, t1Pos.z, 1);
-			if (cutter->f(t1HomPos) > 0) t1CutOff = true;
-
-			vec3 t2Pos(ray.start + ray.dir * t2);
-			vec4 t2HomPos(t2Pos.x, t2Pos.y, t2Pos.z, 1);
-			if (cutter->f(t2HomPos) > 0) t2CutOff = true;
-		}
-		if (t1CutOff && t2CutOff) return hit;
-		else if (t1CutOff) hit.t = t2;
-		else if (t2CutOff) hit.t = t1;
-		else hit.t = (t2 > 0) ? t2 : t1;
-
-		hit.position = ray.start + ray.dir * hit.t; //+ translate;
-		hit.normal = gradf(vec4(hit.position.x, hit.position.y, hit.position.z, 1));
-		hit.material = material;
-		return hit;
-	}
-};
-
-struct Sphere : public Intersectable {
-	vec3 center;
-	float radius;
-
-	Sphere(const vec3& _center, float _radius, Material* _material) {
-		center = _center;
-		radius = _radius;
-		material = _material;
-	}
-
-	Hit intersect(const Ray& ray) {
-		Hit hit;
-		vec3 dist = ray.start - center;
-		float a = dot(ray.dir, ray.dir);
-		float b = dot(dist, ray.dir) * 2.0f;
-		float c = dot(dist, dist) - radius * radius;
-		float discr = b * b - 4.0f * a * c;
-		if (discr < 0) return hit;
-		float sqrt_discr = sqrtf(discr);
-		float t1 = (-b + sqrt_discr) / 2.0f / a;    // t1 >= t2 for sure
-		float t2 = (-b - sqrt_discr) / 2.0f / a;
-		if (t1 <= 0) return hit;
-		hit.t = (t2 > 0) ? t2 : t1;
-		hit.position = ray.start + ray.dir * hit.t;
-		hit.normal = (hit.position - center) * (1.0f / radius);
-		hit.material = material;
-		return hit;
-	}
 };
 
 struct Edge {
@@ -311,7 +195,6 @@ struct Side : public Intersectable {
 
 		hit.normal = p->n;
 		return hit;
-
 	}	
 };
 
@@ -486,8 +369,9 @@ struct Dodecahedron : public Intersectable {
 
 };
 
-struct MySphere : public Quadric {
+struct MySphere : public Intersectable{
 	float a, b, c;
+	mat4 Q;
 
 	MySphere(float _a, float _b, float _c, Material* _material) : a(_a), b(_b), c(_c) {
 		material = _material;
@@ -497,6 +381,43 @@ struct MySphere : public Quadric {
 			0.0f, 0.0f, 1.0f, (c/2.0f),
 			0.0f, 0.0f, (c/2.0f), -0.09f
 		);
+	}
+
+	vec3 gradf(vec4 r) { //r.w = 1
+		vec4 g = r * Q * 2;
+		return normalize(vec3(g.x, g.y, g.z));
+	}
+
+	Hit intersect(const Ray& ray) {
+		Hit hit;
+
+		vec4 S(ray.start.x, ray.start.y, ray.start.z, 1);
+		vec4 D(ray.dir.x, ray.dir.y, ray.dir.z, 0);
+
+		float a = dot(D * Q, D);
+		float b = dot(D * Q, S) + dot(S * Q, D);
+		float c = dot(S * Q, S);
+		float discr = b * b - 4.0f * a * c;
+
+		if (discr < 0) return hit;
+
+		float t1 = (-b + sqrtf(discr)) / 2.0f / a;
+		float t2 = (-b - sqrtf(discr)) / 2.0f / a;
+
+		if (t1 <= 0) return hit;
+
+		bool t1CutOff = false;
+		bool t2CutOff = false;
+
+		if (t1CutOff && t2CutOff) return hit;
+		else if (t1CutOff) hit.t = t2;
+		else if (t2CutOff) hit.t = t1;
+		else hit.t = (t2 > 0) ? t2 : t1;
+
+		hit.position = ray.start + ray.dir * hit.t;
+		hit.normal = gradf(vec4(hit.position.x, hit.position.y, hit.position.z, 1));
+		hit.material = material;
+		return hit;
 	}
 };
 
@@ -549,7 +470,7 @@ public:
 		float fov = 45 * M_PI / 180;
 		camera.set(eye, lookat, vup, fov);
 
-		ambientLight = vec3(0.6f,0.6f,0.6f);
+		ambientLight = vec3(0.5f,0.5f,0.5f);
 		vec3 lightDirection(1,1,1), Le(3, 3, 3);
 		lights.push_back(new Light(lightDirection, Le));
 
