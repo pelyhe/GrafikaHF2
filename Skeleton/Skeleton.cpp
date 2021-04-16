@@ -69,7 +69,7 @@ vec3 operator/(vec3 num, vec3 denom) {
 }
 
 struct Material {
-	vec3 ka, kd, ks;		// ambiens, diffúz, spekuláris visszaverõképesség
+	vec3 ka, kd, ks;		
 	float shininess;
 	vec3 F0;
 	MaterialType type;
@@ -88,7 +88,7 @@ struct RoughMaterial : Material {
 };
 
 struct ReflectiveMaterial : Material {
-	ReflectiveMaterial(vec3 n, vec3 kappa) : Material(REFLECTIVE) {		// n: törésmutató, kappa: kioltási tényezõ
+	ReflectiveMaterial(vec3 n, vec3 kappa) : Material(REFLECTIVE) {		
 		vec3 one(1, 1, 1);
 		F0 = ((n - one) * (n - one) + kappa * kappa) /
 			((n + one) * (n + one) + kappa * kappa);
@@ -101,7 +101,7 @@ struct PortalMaterial : Material{
 
 struct Hit {
 	float t;	
-	vec3 position, normal;		// position: visszaadja a pontot ahol történt ütközés a testtel, normal: felület normálvektora
+	vec3 position, normal;		
 	Material* material;
 	Hit() {
 		t = -1;
@@ -120,7 +120,7 @@ class Intersectable {
 protected: 
 	Material* material;
 public:
-	virtual Hit intersect(const Ray& ray) = 0;		// kap egy sugarat és eldönti, hogy történt-e metszés (hit struktura)
+	virtual Hit intersect(const Ray& ray) = 0;	
 };
 
 struct Edge {
@@ -151,17 +151,18 @@ struct Plane : public Intersectable {
 	Hit intersect(const Ray& ray) {
 		Hit hit;
 		hit.t = dot(n, p - ray.start) / dot(n, ray.dir);
-		if (hit.t <= 0) return hit;
-		hit.normal = n;
-		hit.material = material;
+		if (hit.t > 0) {
+			hit.normal = n;
+			hit.material = material;
+			return hit;
+		}
 		return hit;
 	}
 };
 
 struct Side : public Intersectable {
 
-	//vec3 vert[5];
-	Plane* p;		// a dodekaeder intersectje meghivja az osszes oldal intersectjet!!!
+	Plane* p;		
 	Edge* edges[5];
 	Material* rough;
 	Material* portal;
@@ -181,7 +182,7 @@ struct Side : public Intersectable {
 	}
 
 	Hit intersect(const Ray& ray) {
-		Hit hit = p->intersect(ray); //  hit.t < 0 if no intersection
+		Hit hit = p->intersect(ray); 
 	
 		if (hit.t > 0) {
 			hit.position = ray.start + ray.dir * hit.t;
@@ -331,9 +332,8 @@ struct Dodecahedron : public Intersectable {
 	}
 
 	void initializeSides() {
-		Material* _rough = new RoughMaterial(vec3(0.1f,0.1f,0.1f), vec3(2,2,2), 50);
+		Material* _rough = new RoughMaterial(vec3(0.3f,0.2f,0.1f), vec3(2,2,2), 25);
 		Material* _portal = new PortalMaterial();
-		//Material* _portal = new ReflectiveMaterial(vec3(0.17f, 0.35f, 1.5f), vec3(3.1f, 2.7f, 1.9f));
 
 		for (auto index : indexes) {
 			std::vector<vec3> tmp;
@@ -357,7 +357,7 @@ struct Dodecahedron : public Intersectable {
 	Hit intersect(const Ray& ray) {
 		Hit bestHit;
 		for (Side* s : sides) {
-			Hit hit = s->intersect(ray); //  hit.t < 0 if no intersection
+			Hit hit = s->intersect(ray); 
 			if (hit.t > 0 && (bestHit.t < 0 || hit.t < bestHit.t))
 				bestHit = hit;
 		}
@@ -383,7 +383,7 @@ struct MySphere : public Intersectable{
 		);
 	}
 
-	vec3 gradf(vec4 r) { //r.w = 1
+	vec3 gradf(vec4 r) { 
 		vec4 g = r * Q * 2;
 		return normalize(vec3(g.x, g.y, g.z));
 	}
@@ -397,21 +397,21 @@ struct MySphere : public Intersectable{
 		float a = dot(D * Q, D);
 		float b = dot(D * Q, S) + dot(S * Q, D);
 		float c = dot(S * Q, S);
-		float discr = b * b - 4.0f * a * c;
+		float discriminant = b * b - 4.0f * a * c;
 
-		if (discr < 0) return hit;
+		if (discriminant < 0) return hit;
 
-		float t1 = (-b + sqrtf(discr)) / 2.0f / a;
-		float t2 = (-b - sqrtf(discr)) / 2.0f / a;
+		float t1 = (-b + sqrtf(discriminant)) / 2.0f / a;
+		float t2 = (-b - sqrtf(discriminant)) / 2.0f / a;
 
 		if (t1 <= 0) return hit;
 
-		bool t1CutOff = false;
-		bool t2CutOff = false;
+		bool _t1 = false;
+		bool _t2 = false;
 
-		if (t1CutOff && t2CutOff) return hit;
-		else if (t1CutOff) hit.t = t2;
-		else if (t2CutOff) hit.t = t1;
+		if (_t1 && _t2) return hit;
+		else if (_t1) hit.t = t2;
+		else if (_t2) hit.t = t1;
 		else hit.t = (t2 > 0) ? t2 : t1;
 
 		hit.position = ray.start + ray.dir * hit.t;
@@ -449,8 +449,8 @@ public:
 };
 
 struct Light {
-	vec3 dir;		// fényforrás iránya
-	vec3 Le;		// spektrum
+	vec3 dir;		
+	vec3 Le;		
 	Light(vec3 _dir, vec3 _Le) {
 		dir = normalize(_dir);
 		Le = _Le;
@@ -461,21 +461,57 @@ const float epsilon = 0.0001f;
 
 class Scene {
 	std::vector<Intersectable*> objects;
-	std::vector<Light*> lights;
 	Camera camera;
-	vec3 ambientLight;
+	vec3 ambientLight, Le, lightPos;
 public:
 	void build() {
-		vec3 eye = vec3(1, 0, 0.9), vup = vec3(0, 1, 0), lookat = vec3(0, 0, 0);
-		float fov = 45 * M_PI / 180;
+		vec3 eye = vec3(1,0,0.9), vup = vec3(0, 1, 0), lookat = vec3(0, 0, 0);
+
+		float fov = 60 * M_PI / 180;
 		camera.set(eye, lookat, vup, fov);
 
-		ambientLight = vec3(0.5f,0.5f,0.5f);
-		vec3 lightDirection(1,1,1), Le(3, 3, 3);
-		lights.push_back(new Light(lightDirection, Le));
+		ambientLight = vec3(0.5f,0.6f,0.6f);
+		Le = vec3(0.3f,0.3f,0.5f);
+		lightPos = vec3(0.5f, 0.5f, 0.5f);
 
 		objects.push_back(new MySphere(2.1f, 1.7f, 0.1f, new ReflectiveMaterial(vec3(0.17f, 0.35f, 1.5f), vec3(3.1f, 2.7f, 1.9f))));
 		objects.push_back(new Dodecahedron());
+	}
+
+	// source: https://www.geeks3d.com/20141201/how-to-rotate-a-vertex-by-a-quaternion-in-glsl/
+	vec3 rotate(vec3 position, vec3 axis, float angle) {		
+		vec4 qr = quatFromAxis(axis, angle);
+		vec4 qr_conj = conjugateQuaternion(qr);
+		vec4 q_pos = vec4(position.x, position.y, position.z, 0);
+
+		vec4 q_tmp = multiplyQuaternion(qr, q_pos);
+		qr = multiplyQuaternion(q_tmp, qr_conj);
+
+		return vec3(qr.x, qr.y, qr.z);
+	}
+
+	vec4 quatFromAxis(vec3 axis, float angle)
+	{
+		vec4 qr;
+		float half_angle = (angle * 0.5) * 3.14159 / 180.0;
+		qr.x = axis.x * sin(half_angle);
+		qr.y = axis.y * sin(half_angle);
+		qr.z = axis.z * sin(half_angle);
+		qr.w = cos(half_angle);
+		return qr;
+	}
+
+	vec4 conjugateQuaternion(vec4 q) {
+		return vec4(-q.x, -q.y, -q.z, q.w);
+	}
+
+	vec4 multiplyQuaternion(vec4 q1, vec4 q2) {
+		vec4 qr;
+		qr.x = (q1.w * q2.x) + (q1.x * q2.w) + (q1.y * q2.z) - (q1.z * q2.y);
+		qr.y = (q1.w * q2.y) - (q1.x * q2.z) + (q1.y * q2.w) + (q1.z * q2.x);
+		qr.z = (q1.w * q2.z) + (q1.x * q2.y) - (q1.y * q2.x) + (q1.z * q2.w);
+		qr.w = (q1.w * q2.w) - (q1.x * q2.x) - (q1.y * q2.y) - (q1.z * q2.z);
+		return qr;
 	}
 
 	void render(std::vector<vec4>& image) {
@@ -494,69 +530,56 @@ public:
 	Hit firstIntersect(Ray ray) {
 		Hit bestHit;
 		for (Intersectable* object : objects) {
-			Hit hit = object->intersect(ray); //  hit.t < 0 if no intersection
+			Hit hit = object->intersect(ray); 
 			if (hit.t > 0 && (bestHit.t < 0 || hit.t < bestHit.t))  bestHit = hit;
 		}
 		if (dot(ray.dir, bestHit.normal) > 0) bestHit.normal = bestHit.normal * (-1);
 		return bestHit;
 	}
 
-	bool shadowIntersect(Ray ray) {	// for directional lights
-		for (Intersectable* object : objects) if (object->intersect(ray).t > 0) return true;
-		return false;
-	}
-
-	vec3 reflect(vec3 inDir, vec3 normal) {
-		return inDir - normal * dot(inDir, normal) * 2.0f;
-	}
-
-	vec3 frenel(vec3 F0, float cosa) {
-		vec3 one(1, 1, 1);
-		return F0 + (one - F0) * pow(1 - cosa, 5);
-	}
-
 	vec3 trace(Ray ray, int depth = 0) {
 		if (depth > 5) return ambientLight;
 		Hit hit = firstIntersect(ray);
 		if (hit.t < 0) return ambientLight;
+		
 		vec3 outRadiance(0, 0, 0);
-
+		
 		if (hit.material->type == ROUGH) {
-			for (Light* light : lights) {
-				outRadiance = hit.material->ks * dot(hit.normal, light->dir);
-				Ray shadowRay(hit.position + hit.normal * epsilon, light->dir);
-				float cosTheta = dot(hit.normal, light->dir);
-				if (cosTheta > 0 && !shadowIntersect(shadowRay)) {	
-					outRadiance = outRadiance + light->Le * hit.material->kd * cosTheta;
-					vec3 halfway = normalize(-ray.dir + light->dir);
-					float cosDelta = dot(hit.normal, halfway);
-					if (cosDelta > 0)
-						outRadiance = outRadiance + light->Le * hit.material->ks * powf(cosDelta, hit.material->shininess);
-				}
-			}
+			outRadiance = hit.material->ka * ambientLight;	
+			vec3 lightDirection = normalize(lightPos - hit.position);
 
-			return outRadiance;
+			float costheta = dot(hit.normal, lightDirection);
+			if (costheta > 0 ) {	
+				outRadiance = outRadiance + Le * hit.material->kd * costheta;
+				vec3 halfway = normalize(-ray.dir + lightDirection);
+				float cosdelta = dot(hit.normal, halfway);
+				if (cosdelta > 0) 
+					outRadiance = outRadiance + Le * hit.material->ks * powf(cosdelta, hit.material->shininess);
+			}
 		}
-		else if (hit.material->type == REFLECTIVE) {
+
+		if (hit.material->type == REFLECTIVE) {
 			vec3 reflectedDir = ray.dir - hit.normal * dot(hit.normal, ray.dir) * 2.0f;
 			float cosa = -dot(ray.dir, hit.normal);
 			vec3 one(1, 1, 1);
 			vec3 F = hit.material->F0 + (one - hit.material->F0) * pow(1 - cosa, 5);
 			outRadiance = outRadiance + trace(Ray(hit.position + hit.normal * epsilon, reflectedDir), depth + 1) * F;
 		}
-		else if (hit.material->type == PORTAL) {
+
+		if (hit.material->type == PORTAL) {
 			vec3 reflectedDir = ray.dir - hit.normal * dot(hit.normal, ray.dir) * 2.0f;
-			outRadiance = outRadiance + trace(Ray(hit.position + hit.normal * epsilon, reflectedDir), depth + 1);
+
+			ray.start = rotate(hit.position + hit.normal * epsilon, hit.normal, 72);
+			ray.dir = rotate(reflectedDir, hit.normal, 72);
+
+			outRadiance = outRadiance + trace(Ray(ray.start + hit.normal * epsilon, ray.dir), depth + 1);
 		}
 
 		return outRadiance;
 	}
-
-
 };
 
-GPUProgram gpuProgram; // vertex and fragment shaders
-//unsigned int vao;	   // virtual world on the GPU
+GPUProgram gpuProgram; 
 Scene scene;
 
 class FullScreenTexturedQuad {
@@ -604,7 +627,6 @@ public:
 
 FullScreenTexturedQuad* fullScreenTexturedQuad;
 
-// Initialization, create an OpenGL context
 void onInitialization() {
 	glViewport(0, 0, windowWidth, windowHeight);
 	scene.build();
@@ -616,7 +638,6 @@ void onInitialization() {
 	gpuProgram.create(vertexSource, fragmentSource, "fragmentColor");
 }
 
-// Window has become invalid: Redraw
 void onDisplay() {
 
 	std::vector<vec4> image(windowWidth * windowHeight);
@@ -625,29 +646,24 @@ void onDisplay() {
 	fullScreenTexturedQuad->Load(image);
 	fullScreenTexturedQuad->Draw();
 
-	glutSwapBuffers();	// exchange the two buffers
+	glutSwapBuffers();	
 								
 }
 
-// Key of ASCII code pressed
 void onKeyboard(unsigned char key, int pX, int pY) {
 }
 
-// Key of ASCII code released
 void onKeyboardUp(unsigned char key, int pX, int pY) {
 
 }
 
-// Mouse click event
 void onMouse(int button, int state, int pX, int pY) {
 }
 
-// Move mouse with key pressed
-void onMouseMotion(int pX, int pY) {
+void onMouseMotion(int pX, int pY){
 }
 
-// Idle event indicating that some time elapsed: do animation here
 void onIdle() {
-	scene.Animate(0.1f);
+	scene.Animate(0.08f);
 	glutPostRedisplay();
 }
